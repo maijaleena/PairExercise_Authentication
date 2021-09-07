@@ -1,4 +1,5 @@
 const Sequelize = require('sequelize');
+const bcrypt = require('bcrypt');
 const { STRING } = Sequelize;
 const config = {
   logging: false
@@ -15,6 +16,14 @@ const User = conn.define('user', {
   username: STRING,
   password: STRING
 });
+
+const Note = conn.define('note', {
+  text: STRING
+})
+
+
+Note.belongsTo(User);
+User.hasMany(Note);
 
 User.byToken = async(token)=> {
 
@@ -33,19 +42,29 @@ User.byToken = async(token)=> {
 };
 
 User.authenticate = async({ username, password })=> {
+
   const user = await User.findOne({
     where: {
       username,
-      password
+      // password
     }
   });
-  if(user){
+
+  const verifyPassword = await bcrypt.compare(password, user.password);
+
+  if(verifyPassword === true){
     return jwt.sign({userId: user.id}, process.env.JWT);
   }
   const error = Error('bad credentials');
   error.status = 401;
   throw error;
 };
+
+User.beforeCreate(async (user) => {
+  const saltRounds = 10;
+  let hashed = bcrypt.hashSync(user.getDataValue('password'), saltRounds);
+  user.setDataValue('password', hashed);
+});
 
 const syncAndSeed = async()=> {
   await conn.sync({ force: true });
@@ -54,9 +73,27 @@ const syncAndSeed = async()=> {
     { username: 'moe', password: 'moe_pw'},
     { username: 'larry', password: 'larry_pw'}
   ];
+
+
   const [lucy, moe, larry] = await Promise.all(
     credentials.map( credential => User.create(credential))
   );
+
+  await Note.create({
+    text: 'text',
+    userId: lucy.id
+  })
+
+  await Note.create({
+    text: 'text',
+    userId: moe.id
+  })
+
+  await Note.create({
+    text: 'text',
+    userId: larry.id
+  })
+
   return {
     users: {
       lucy,
